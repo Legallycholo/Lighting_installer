@@ -1,0 +1,59 @@
+.strand {
+  display: flex;
+  height: 44px;
+  overflow-x: clip;
+  overflow-y: visible;
+  position: relative;
+  z-index: 2;
+}
+.segment {
+  position: relative;
+  flex: 1;
+  height: 44px;
+}
+.wire {
+  position: absolute;
+  width: 100%;
+  height: 44px;
+}
+.bulb {
+  position: absolute;
+  width: 14px;
+  height: 23px;
+  margin-left: -7px;
+  margin-top: -4.8px;
+  animation:
+    ignite 0.55s var(--delay) both,
+    breathe 2.6s 1.9s ease-in-out infinite alternate;
+}
+@keyframes ignite {
+  0% {
+    filter: brightness(0.5);
+  }
+  38% {
+    filter: brightness(1.3) drop-shadow(0 0 12px currentColor);
+  }
+  100% {
+    filter: brightness(0.95) drop-shadow(0 0 4px currentColor);
+  }
+}
+@keyframes breathe {
+  from {
+    filter: brightness(0.95) drop-shadow(0 0 4px currentColor);
+  }
+  to {
+    filter: brightness(1.14) drop-shadow(0 0 9px currentColor)
+      drop-shadow(0 0 3px currentColor);
+  }
+}
+@media (max-width: 760px) {
+  .segment:nth-child(n + 3) {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bulb {
+    animation: none;
+    filter: drop-shadow(0 0 6px currentColor);
+  }
+}
