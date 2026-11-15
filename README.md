@@ -34,6 +34,12 @@ Snapshots under `tests/visual` are regression baselines for this implementation;
 they are **not proof of pixel parity** with the reference's licensed media.
 Review intentional visual changes before running `pnpm test:visual --update-snapshots`.
 
+Baselines are platform-specific (`*-darwin.png`, `*-linux.png`) because font
+rasterisation differs between operating systems. If a platform has no baseline
+yet, the first visual run writes one and fails; re-run to compare. To use a
+pre-installed Chromium instead of Playwright's download (for example in a CI
+image), set `PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium`.
+
 ## Where to edit
 
 - `content/site.ts`: identity, canonical phone, season, claims, prices and SEO.

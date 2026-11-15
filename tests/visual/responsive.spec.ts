@@ -21,6 +21,10 @@ for (const viewport of viewports) {
       ["/christmas-light-quote", "quote"],
     ]) {
       await page.goto(route);
+      // The Next.js dev-tools badge is not part of the page; keep it out of baselines.
+      await page.addStyleTag({
+        content: "nextjs-portal { display: none !important; }",
+      });
       await page.evaluate(() => document.fonts.ready);
       await expect(page.locator("main h1")).toBeVisible();
       expect(

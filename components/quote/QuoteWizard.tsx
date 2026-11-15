@@ -17,7 +17,8 @@ import {
 } from "@/content/quote";
 import { site, smsHref, telHref } from "@/content/site";
 import { isZipInArea } from "@/content/service-areas";
-import { contactSchema } from "@/lib/lead-schema";
+import { contactSchema, type LeadInput } from "@/lib/lead-schema";
+import { submitLead } from "@/lib/lead-submit";
 import {
   captureAttribution,
   hasAttributionConsent,
@@ -124,9 +125,11 @@ export function QuoteWizard() {
   const pending = useRef(false);
   const requestKey = useRef("");
   const request = useRef<AbortController | null>(null);
+  const mounted = useRef(true);
 
   useEffect(() => {
     let active = true;
+    mounted.current = true;
     queueMicrotask(() => {
       if (active) {
         setMarketingConsent(hasAttributionConsent());
@@ -141,6 +144,7 @@ export function QuoteWizard() {
       });
     return () => {
       active = false;
+      mounted.current = false;
       request.current?.abort();
     };
   }, []);
@@ -226,49 +230,65 @@ export function QuoteWizard() {
 
   async function submit() {
     if (pending.current) return;
+    // Every step validated these already; the guard only narrows the types.
+    if (
+      !state.propertyType ||
+      !state.stories ||
+      !state.budget ||
+      !state.consent
+    ) {
+      setErrors({ option: ui.validationSummary });
+      return;
+    }
     pending.current = true;
     setErrors({});
     setState((previous) => ({ ...previous, phase: "submitting" }));
+    // Reuse the key for retries of an unchanged payload; update() resets it.
     requestKey.current ||= crypto.randomUUID();
     const controller = new AbortController();
     request.current = controller;
-    const timeout = window.setTimeout(() => controller.abort(), 15000);
-    try {
-      const { phase: _phase, step: _step, inArea: _inArea, ...answers } = state;
-      void _phase;
-      void _step;
-      void _inArea;
-      const response = await fetch("/api/leads", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": requestKey.current,
-        },
-        body: JSON.stringify({ ...answers, attribution: readAttribution() }),
-        signal: controller.signal,
-      });
-      const result = await response.json();
-      if (!response.ok || !result.ok) throw new Error("Submission failed");
-      setMode(result.mode === "live" ? "live" : "demo");
-      trackEvent("submit_success", {
-        mode: result.mode === "live" ? "live" : "demo",
-      });
-      hasNavigated.current = true;
+    const payload: LeadInput = {
+      zip: state.zip,
+      propertyType: state.propertyType,
+      stories: state.stories,
+      budget: state.budget,
+      name: state.name,
+      phone: state.phone,
+      email: state.email,
+      address: state.address,
+      notes: state.notes,
+      consent: state.consent,
+      website: state.website,
+      attribution: readAttribution(),
+    };
+    const result = await submitLead(
+      payload,
+      requestKey.current,
+      controller.signal,
+    );
+    pending.current = false;
+    request.current = null;
+    if (!mounted.current) return; // Cancelled by navigation; nothing to show.
+    hasNavigated.current = true;
+    if (result.ok) {
+      setMode(result.mode);
+      trackEvent("submit_success", { mode: result.mode });
       setState((previous) => ({ ...previous, phase: "success" }));
-    } catch {
+    } else {
       trackEvent("submit_failure");
-      hasNavigated.current = true;
       setState((previous) => ({ ...previous, phase: "error" }));
       setErrors({ submit: ui.submitError });
-    } finally {
-      clearTimeout(timeout);
-      pending.current = false;
-      request.current = null;
     }
   }
 
   const busy = state.phase === "submitting";
   const success = state.phase === "success";
+  const firstName = state.name.trim().split(/\s+/)[0] || copy.done.fallbackName;
+  // In demo mode nobody will call, so only the gallery suggestion applies.
+  const nextSteps =
+    mode === "live"
+      ? copy.done.meta
+      : copy.done.meta.filter((item) => item.v === "gallery-link");
   const question =
     state.step === 0
       ? copy.property
@@ -369,9 +389,16 @@ export function QuoteWizard() {
               {mode === "demo" ? ui.demo.badge : site.shortName}
             </span>
             <h2 ref={headingRef} tabIndex={-1}>
-              {mode === "demo" ? ui.demo.title : ui.realSuccess.title}
+              {mode === "demo"
+                ? ui.demo.title
+                : `${copy.done.titlePre}${firstName}.`}
             </h2>
-            <p>{mode === "demo" ? ui.demo.body : ui.realSuccess.body}</p>
+            <p>
+              {mode === "demo"
+                ? ui.demo.body
+                : `${copy.done.body.pre}${state.phone}.${copy.done.body.post}`}
+            </p>
+            {mode === "live" && <p>{ui.realSuccess.body}</p>}
             <Image
               src={copy.done.skyline.src}
               width={copy.done.skyline.width}
@@ -379,6 +406,36 @@ export function QuoteWizard() {
               alt={copy.done.skyline.alt}
               className={styles.skyline}
             />
+            <dl className={styles.nextSteps}>
+              {nextSteps.map((item) => (
+                <div key={item.k}>
+                  <dt>{item.k}</dt>
+                  <dd>
+                    {item.v === "call-or-text" ? (
+                      <>
+                        <a href={telHref(site.phone)}>
+                          {site.cta.call} {site.phone.display}
+                        </a>{" "}
+                        ·{" "}
+                        <a href={smsHref(site.smsPhone)}>
+                          {site.cta.text} {site.smsPhone.display}
+                        </a>
+                      </>
+                    ) : item.v === "gallery-link" ? (
+                      <>
+                        <Link href="/#gallery">{copy.done.galleryLink}</Link>
+                        {copy.done.galleryTail}
+                      </>
+                    ) : (
+                      item.v
+                    )}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            {mode === "live" && (
+              <p className={styles.hoursLine}>{copy.done.hoursLine}</p>
+            )}
             <Link className="btn btn-red" href="/">
               {ui.returnHome}
             </Link>
@@ -664,13 +721,16 @@ export function QuoteWizard() {
             </fieldset>
             {Object.keys(errors).length > 0 && (
               <div className={styles.errorSummary} role="alert">
-                {errors.submit ?? errors.option ?? ui.validationSummary}
+                {errors.submit && <strong>{copy.review.error.title}</strong>}
+                <p>{errors.submit ?? errors.option ?? ui.validationSummary}</p>
                 {errors.submit && (
                   <p>
-                    <a href={telHref(site.phone)}>
-                      {site.cta.call} {site.phone.display}
-                    </a>{" "}
-                    · <a href={smsHref(site.smsPhone)}>{site.cta.text}</a>
+                    {copy.review.error.body.pre}
+                    <a href={telHref(site.phone)}>{site.phone.display}</a>
+                    {copy.review.error.body.post}{" "}
+                    <a href={smsHref(site.smsPhone)}>
+                      {site.cta.text} {site.smsPhone.display}
+                    </a>
                   </p>
                 )}
               </div>

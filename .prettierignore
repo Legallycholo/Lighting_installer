@@ -5,3 +5,5 @@ public/media
 artifacts
 playwright-report
 test-results
+# Owner-supplied specification; keep its original formatting.
+IMPLEMENTATION_PLAN.md

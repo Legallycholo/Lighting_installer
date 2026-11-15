@@ -11,6 +11,8 @@ export function Hero() {
         <div className={styles.heroGrid}>
           <div className={styles.heroCopy}>
             <Spark className={styles.heroSpark} />
+            <Spark className={`${styles.heroSpark} ${styles.heroSparkInk}`} />
+            <Spark className={`${styles.heroSpark} ${styles.heroSparkSmall}`} />
             <h1 id="hero-heading" className={styles.heroTitle}>
               {hero.headline.map((line, index) => (
                 <span key={index}>

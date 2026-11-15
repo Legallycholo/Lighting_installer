@@ -4,11 +4,20 @@ export type LeadResult =
   | { ok: true; mode: "demo" | "live"; id: string }
   | { ok: false; error: string; fields?: Record<string, string> };
 
-/** Keep a key for retries of an unchanged payload; replace it after an edit. */
+const REQUEST_TIMEOUT_MS = 15_000;
+
+/**
+ * Submit a lead to the project's own `/api/leads` route — never directly to a
+ * third-party webhook. Keep the same idempotency key for retries of an
+ * unchanged payload; replace it after any edit. An optional `signal` lets the
+ * caller cancel (for example on unmount); the request also times out on its own.
+ */
 export async function submitLead(
   payload: LeadInput,
   idempotencyKey: string,
+  signal?: AbortSignal,
 ): Promise<LeadResult> {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch("/api/leads", {
       method: "POST",
@@ -17,7 +26,7 @@ export async function submitLead(
         "Idempotency-Key": idempotencyKey,
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(15_000),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
     const result: unknown = await response.json();
     if (
